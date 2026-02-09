@@ -259,7 +259,16 @@
                 if(ok) {
                     const t = window.courseData.tasks.find(x => x.id === activeId);
                     const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user'};
-                    const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n👤 ${user.first_name}\n🔑 @${user.username}\n🔗 ${url}\n🚩 ${late?'Опоздание':'Вовремя'}\n📘 ${t.title}`;
+                    
+                    // ФОРМАТ СООБЩЕНИЯ (ТОЛЬКО ЭТА ЧАСТЬ ИЗМЕНЕНА ПО ПРОСЬБЕ)
+                    const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
+                                `<b>Имя:</b> ${user.first_name}\n` +
+                                `<b>Логин:</b> @${user.username || 'unknown'}\n` +
+                                `<b>Чат с учеником:</b> tg://user?id=${user.id}\n` +
+                                `<b>Ссылка на ДЗ:</b> ${url}\n` +
+                                `<b>Статус:</b> ${late ? 'После дедлайна 🚩' : 'Вовремя ✅'}\n` +
+                                `<b>Модуль:</b> ${t.title}`;
+
                     try {
                         await fetch(`https://api.telegram.org/bot8068708797:AAGhY2aD8_waCmB8oCyN2dd3FcmMY3SJJAs/sendMessage`, {
                             method:'POST', headers:{'Content-Type':'application/json'},
