@@ -35,6 +35,9 @@
         
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
+        // ВАШ TELEGRAM ID ДЛЯ АДМИНИСТРИРОВАНИЯ
+        const ADMIN_ID = 758556732; 
+
         window.DEFAULT_CONFIG = [
             { id: 1, title: "Модуль 1: Введение", deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16) },
             { id: 2, title: "Модуль 2: Аналитика", deadline: new Date(Date.now() + 172800000).toISOString().slice(0,16) },
@@ -134,13 +137,18 @@
         
         let clickCount = 0;
         window.adminClick = () => {
-            clickCount++;
-            if (clickCount >= 5) {
-                document.getElementById('admin-btn').classList.remove('hidden');
-                document.getElementById('default-icon').classList.add('hidden');
-                if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+            const user = tg.initDataUnsafe?.user;
+            // Проверка на ваш ID + 5 кликов
+            if (user && user.id === ADMIN_ID) {
+                clickCount++;
+                if (clickCount >= 5) {
+                    document.getElementById('admin-btn').classList.remove('hidden');
+                    document.getElementById('default-icon').classList.add('hidden');
+                    if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                    clickCount = 0;
+                }
+                setTimeout(() => clickCount = 0, 3000);
             }
-            setTimeout(() => clickCount = 0, 2000);
         };
 
         window.toggleAdmin = () => {
