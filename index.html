@@ -23,7 +23,7 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Firebase Configuration
+        // Конфигурация Firebase из вашего файла
         const firebaseConfig = {
             apiKey: "AIzaSyAQJP9v-BI266Eg7BlkXTmtkh81x5ew8oQ",
             authDomain: "my-course-final.firebaseapp.com",
@@ -35,9 +35,10 @@
         
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        // ВАШ TELEGRAM ID ДЛЯ АДМИНИСТРИРОВАНИЯ
+        // Константа администратора
         const ADMIN_ID = 758556732; 
 
+        // Настройки по умолчанию
         window.DEFAULT_CONFIG = [
             { id: 1, title: "Модуль 1: Введение", deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16) },
             { id: 2, title: "Модуль 2: Аналитика", deadline: new Date(Date.now() + 172800000).toISOString().slice(0,16) },
@@ -51,6 +52,7 @@
             { id: 10, title: "Модуль 10: Финал", deadline: new Date(Date.now() + 864000000).toISOString().slice(0,16) }
         ];
 
+        // Инициализация данных из localStorage или дефолтов
         window.courseData = { 
             title: localStorage.getItem('courseTitle') || "Твой Путь", 
             tasks: JSON.parse(localStorage.getItem('courseConfig')) || window.DEFAULT_CONFIG 
@@ -67,6 +69,7 @@
 
                 const connectToCloud = (user) => {
                     if (!user) return;
+                    // Путь к документу согласно правилам (public/data)
                     const courseRef = doc(db, 'artifacts', appId, 'public', 'data', 'course_settings', 'data_doc');
                     
                     onSnapshot(courseRef, (docSnap) => {
@@ -96,6 +99,7 @@
                             await setDoc(courseRef, { tasks, title, updatedAt: new Date().toISOString() });
                             return true;
                         } catch (e) {
+                            console.error("Save error:", e);
                             return false;
                         }
                     };
@@ -132,41 +136,54 @@
 
         window.onload = init;
 
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        // Telegram WebApp logic
+        const tg = window.Telegram?.WebApp;
+        if(tg) tg.expand();
         
         let clickCount = 0;
         window.adminClick = () => {
+            // УБРАНА ПРОВЕРКА ID - теперь открыть может любой по 5 кликам
             clickCount++;
             if (clickCount >= 5) {
                 document.getElementById('admin-btn').classList.remove('hidden');
                 document.getElementById('default-icon').classList.add('hidden');
-                if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                if(tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
                 clickCount = 0;
             }
+            
             clearTimeout(window.clickTimer);
             window.clickTimer = setTimeout(() => clickCount = 0, 3000);
         };
 
         window.toggleAdmin = () => {
             const p = document.getElementById('admin-panel');
-            const user = tg.initDataUnsafe?.user;
-            const isActualAdmin = user && Number(user.id) === Number(ADMIN_ID);
-            
             p.classList.toggle('hidden');
             
             if(!p.classList.contains('hidden')) {
-                // Если зашел ученик (не админ) — скрываем всё, кроме сброса
-                if (!isActualAdmin) {
-                    document.getElementById('admin-course-editor').classList.add('hidden');
-                    document.getElementById('admin-footer-buttons').classList.add('hidden');
-                    document.querySelector('.admin-title-text').innerText = "Настройки профиля";
-                } else {
-                    document.getElementById('admin-course-editor').classList.remove('hidden');
-                    document.getElementById('admin-footer-buttons').classList.remove('hidden');
-                    document.querySelector('.admin-title-text').innerText = "Редактор курса";
+                // ПРОВЕРКА ПРАВ: Определяем, Админ или Ученик
+                const user = tg?.initDataUnsafe?.user;
+                const isAdmin = user && Number(user.id) === Number(ADMIN_ID);
+                
+                const titleSec = document.getElementById('admin-title-section');
+                const inputsSec = document.getElementById('admin-inputs');
+                const botControls = document.getElementById('admin-bottom-controls');
+                const panelTitle = document.getElementById('admin-panel-title');
+                
+                if (isAdmin) {
+                    // АДМИН: Видит всё
+                    panelTitle.innerText = "РЕДАКТОР КУРСА";
+                    titleSec.classList.remove('hidden');
+                    inputsSec.classList.remove('hidden');
+                    botControls.classList.remove('hidden');
+                    
                     document.getElementById('admin-course-title-input').value = window.courseData.title;
                     renderAdminInputs();
+                } else {
+                    // УЧЕНИК: Видит только сброс прогресса
+                    panelTitle.innerText = "НАСТРОЙКИ";
+                    titleSec.classList.add('hidden');
+                    inputsSec.classList.add('hidden');
+                    botControls.classList.add('hidden');
                 }
             }
         };
@@ -212,9 +229,17 @@
             window.courseData.tasks.forEach((t, i) => {
                 const lvl = i + 1;
                 let cls='', icon='', click=false;
-                if(lvl < window.userLevel) { cls='task-done'; icon='<i data-lucide="check-circle-2" class="text-emerald-400 w-6 h-6"></i>'; }
-                else if(lvl === window.userLevel) { cls='task-active cursor-pointer hover:bg-white/5'; icon='<div class="pulse-ring"></div>'; click=true; }
-                else { cls='task-locked'; icon='<i data-lucide="lock" class="text-gray-600 w-5 h-5"></i>'; }
+                if(lvl < window.userLevel) { 
+                    cls='task-done'; 
+                    icon='<i data-lucide="check-circle-2" class="text-emerald-400 w-6 h-6"></i>'; 
+                } else if(lvl === window.userLevel) { 
+                    cls='task-active cursor-pointer hover:bg-white/5'; 
+                    icon='<div class="pulse-ring"></div>'; 
+                    click=true; 
+                } else { 
+                    cls='task-locked'; 
+                    icon='<i data-lucide="lock" class="text-gray-600 w-5 h-5"></i>'; 
+                }
                 const d = new Date(t.deadline);
                 container.insertAdjacentHTML('beforeend', `
                     <div class="glass-panel p-5 task-card ${cls} animate-in" style="animation-delay: ${i * 0.05}s" onclick="${click ? `openTask(${t.id})` : ''}">
@@ -245,24 +270,36 @@
             if(timer) clearInterval(timer);
             const upd = () => {
                 const diff = new Date(t.deadline) - new Date();
-                if(diff <= 0) { el.innerText = "00:00:00"; el.className = "text-3xl font-black neon-red"; btn.classList.add('hidden'); lBtn.classList.remove('hidden'); return; }
-                el.className = "text-3xl font-black neon-blue"; btn.classList.remove('hidden'); lBtn.classList.add('hidden');
+                if(diff <= 0) { 
+                    el.innerText = "00:00:00"; 
+                    el.className = "text-3xl font-black neon-red"; 
+                    btn.classList.add('hidden'); 
+                    lBtn.classList.remove('hidden'); 
+                    return; 
+                }
+                el.className = "text-3xl font-black neon-blue"; 
+                btn.classList.remove('hidden'); 
+                lBtn.classList.add('hidden');
                 const h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
                 el.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
             };
             upd(); timer = setInterval(upd, 1000);
         };
 
-        window.goBack = () => { document.getElementById('screen-detail').classList.add('hidden'); clearInterval(timer); };
+        window.goBack = () => { 
+            document.getElementById('screen-detail').classList.add('hidden'); 
+            clearInterval(timer); 
+        };
 
         window.submitTask = async (late = false) => {
             const urlInp = document.getElementById('work-url');
             const url = urlInp.value.trim();
             if(!url.startsWith('http')) return window.showModal("Ошибка", "Вставьте корректную ссылку.");
+            
             window.showModal("Отправить?", late ? "Вы сдаете с опозданием." : "Ссылка будет отправлена куратору.", async (ok) => {
                 if(ok) {
                     const t = window.courseData.tasks.find(x => x.id === activeId);
-                    const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user', id: '0'};
+                    const user = tg?.initDataUnsafe?.user || {first_name: 'Тест', username: 'user', id: '0'};
                     const completed = Math.min(window.userLevel, window.courseData.tasks.length);
                     
                     const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
@@ -285,14 +322,21 @@
         };
 
         function handleSuccess() {
-            window.userLevel++; localStorage.setItem('userCurrentLevel', window.userLevel);
-            window.goBack(); window.renderDashboard();
+            window.userLevel++; 
+            localStorage.setItem('userCurrentLevel', window.userLevel);
+            window.goBack(); 
+            window.renderDashboard();
             window.showModal("Успешно", "Работа принята!", null, false);
         }
 
         window.resetUserProgress = () => {
             window.showModal("Сброс?", "Вернуться на 1 уровень?", (ok) => {
-                if(ok) { window.userLevel = 1; localStorage.setItem('userCurrentLevel', 1); window.renderDashboard(); window.toggleAdmin(); }
+                if(ok) { 
+                    window.userLevel = 1; 
+                    localStorage.setItem('userCurrentLevel', 1); 
+                    window.renderDashboard(); 
+                    window.toggleAdmin(); 
+                }
             });
         };
 
@@ -314,10 +358,14 @@
 
             if(window.saveToCloudAction) {
                 const ok = await window.saveToCloudAction(tasks, title);
-                if(ok) { window.showModal("Успешно", "Курс обновлен в облаке."); window.toggleAdmin(); }
-                else window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
+                if(ok) { 
+                    window.showModal("Успешно", "Курс обновлен в облаке."); 
+                    window.toggleAdmin(); 
+                } else {
+                    window.showModal("Ошибка", "Не удалось сохранить в облако. Проверьте настройки доступа Firebase.");
+                }
             } else {
-                window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
+                window.showModal("Локально", "Данные сохранены в памяти. Авторизация в Firebase не удалась.");
                 window.toggleAdmin();
             }
             btn.disabled = false; btn.innerText = "Опубликовать в облако";
@@ -340,24 +388,68 @@
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; background: radial-gradient(circle at top right, #0f172a, #000000); background-attachment: fixed; color: white; min-height: 100vh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; }
-        .task-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; align-items: center; }
-        .task-active { background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%); border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); }
-        .task-locked { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
-        .task-done { border-color: #10b981; background: rgba(16, 185, 129, 0.08); }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: radial-gradient(circle at top right, #0f172a, #000000); 
+            background-attachment: fixed; 
+            color: white; 
+            min-height: 100vh; 
+            overflow-x: hidden; 
+            -webkit-tap-highlight-color: transparent; 
+            padding-top: env(safe-area-inset-top); 
+            padding-bottom: env(safe-area-inset-bottom); 
+        }
+        .glass-panel { 
+            background: rgba(255, 255, 255, 0.05); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 20px; 
+        }
+        .task-card { 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            display: flex; 
+            align-items: center; 
+        }
+        .task-active { 
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%); 
+            border-color: #3b82f6; 
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); 
+        }
+        .task-locked { 
+            opacity: 0.5; 
+            filter: grayscale(1); 
+            pointer-events: none; 
+        }
+        .task-done { 
+            border-color: #10b981; 
+            background: rgba(16, 185, 129, 0.08); 
+        }
         .neon-text { text-shadow: 0 0 10px rgba(255, 255, 255, 0.2); }
         .neon-blue { text-shadow: 0 0 15px #3b82f6; }
         .neon-red { text-shadow: 0 0 15px #ef4444; color: #ef4444 !important; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { 
+            from { opacity: 0; transform: translateY(15px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
         .animate-in { animation: slideUp 0.4s ease-out forwards; }
-        .pulse-ring { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; animation: pulse-blue 2s infinite; }
-        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+        .pulse-ring { 
+            width: 12px; height: 12px; 
+            background: #3b82f6; 
+            border-radius: 50%; 
+            animation: pulse-blue 2s infinite; 
+        }
+        @keyframes pulse-blue { 
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } 
+        }
     </style>
 </head>
 <body class="p-4 sm:p-6 flex justify-center">
 
     <div class="w-full max-w-md mx-auto flex flex-col h-full relative">
+        <!-- Dashboard Screen -->
         <div id="screen-dashboard" class="w-full pb-10">
             <header class="mb-6 flex justify-between items-end sticky top-0 z-10 py-4 bg-black/40 backdrop-blur-md -mx-4 px-4 rounded-b-2xl">
                 <div onclick="adminClick()" class="flex flex-col cursor-pointer select-none">
@@ -377,6 +469,7 @@
             <div id="tasks-list" class="space-y-3"></div>
         </div>
 
+        <!-- Detail Screen / Modal -->
         <div id="screen-detail" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm p-6 flex items-center justify-center animate-in">
             <div class="glass-panel p-6 w-full max-w-[340px] relative shadow-2xl">
                 <button onclick="goBack()" class="absolute -top-12 left-0 text-gray-400 flex items-center gap-2 text-sm hover:text-white transition-colors">
@@ -401,33 +494,37 @@
         </div>
     </div>
 
-    <!-- Редактор (Админ) -->
+    <!-- Admin Panel -->
     <div id="admin-panel" class="hidden fixed inset-0 z-[60] bg-slate-950 p-6 overflow-y-auto">
         <div class="w-full max-w-md mx-auto pb-48">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold text-yellow-500 uppercase admin-title-text">Редактор курса</h2>
+                <h2 id="admin-panel-title" class="text-xl font-bold text-yellow-500 uppercase">Редактор курса</h2>
                 <button onclick="toggleAdmin()" class="px-3 py-1 bg-white/10 rounded-lg text-xs">Закрыть</button>
             </div>
             
-            <div id="admin-course-editor" class="">
-                <div class="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                    <label class="text-[10px] text-yellow-500 font-bold uppercase block mb-1">Заголовок курса</label>
-                    <input type="text" id="admin-course-title-input" class="w-full bg-transparent border-b border-white/20 py-1 text-base font-bold text-white outline-none">
-                </div>
-                <div id="admin-inputs" class="space-y-3 mb-6"></div>
+            <!-- Секция только для АДМИНА: Заголовок -->
+            <div id="admin-title-section" class="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                <label class="text-[10px] text-yellow-500 font-bold uppercase block mb-1">Заголовок курса</label>
+                <input type="text" id="admin-course-title-input" class="w-full bg-transparent border-b border-white/20 py-1 text-base font-bold text-white outline-none">
             </div>
 
+            <!-- Секция только для АДМИНА: Список модулей -->
+            <div id="admin-inputs" class="space-y-3 mb-6"></div>
+            
+            <!-- Секция ОБЩАЯ: Сброс прогресса -->
             <div class="p-4 bg-red-500/10 rounded-xl border border-red-500/20 mb-10">
                 <button onclick="resetUserProgress()" class="w-full py-3 bg-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest text-white">Сбросить мой прогресс</button>
             </div>
-            
-            <div id="admin-footer-buttons" class="fixed bottom-0 left-0 w-full p-4 bg-slate-950/90 backdrop-blur-md border-t border-white/10 flex flex-col gap-2 max-w-md mx-auto right-0">
+
+            <!-- Секция только для АДМИНА: Нижние кнопки -->
+            <div id="admin-bottom-controls" class="fixed bottom-0 left-0 w-full p-4 bg-slate-950/90 backdrop-blur-md border-t border-white/10 flex flex-col gap-2 max-w-md mx-auto right-0">
                  <button onclick="addModule()" class="py-3 bg-white/5 rounded-xl text-xs font-bold uppercase tracking-widest">+ Добавить модуль</button>
                  <button id="cloud-save-btn" onclick="saveAdminData()" class="py-4 bg-yellow-600 rounded-xl font-bold text-black uppercase text-xs tracking-widest">Опубликовать в облако</button>
             </div>
         </div>
     </div>
 
+    <!-- Custom Dialog Modal -->
     <div id="custom-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-6 backdrop-blur-md animate-in">
         <div class="glass-panel p-6 w-full max-w-xs text-center">
             <h3 id="modal-title" class="text-lg font-bold mb-2"></h3>
