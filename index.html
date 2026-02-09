@@ -138,17 +138,24 @@
         let clickCount = 0;
         window.adminClick = () => {
             const user = tg.initDataUnsafe?.user;
-            // Проверка на ваш ID + 5 кликов
-            if (user && user.id === ADMIN_ID) {
-                clickCount++;
-                if (clickCount >= 5) {
-                    document.getElementById('admin-btn').classList.remove('hidden');
-                    document.getElementById('default-icon').classList.add('hidden');
-                    if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-                    clickCount = 0;
-                }
-                setTimeout(() => clickCount = 0, 3000);
+            
+            // СТРОГАЯ ПРОВЕРКА: Если данных нет или ID не совпадает - выходим сразу
+            if (!user || Number(user.id) !== Number(ADMIN_ID)) {
+                return;
             }
+
+            // Если это ВЫ (ID совпал), считаем клики
+            clickCount++;
+            if (clickCount >= 5) {
+                document.getElementById('admin-btn').classList.remove('hidden');
+                document.getElementById('default-icon').classList.add('hidden');
+                if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                clickCount = 0;
+            }
+            
+            // Сброс счетчика через 3 секунды бездействия
+            clearTimeout(window.clickTimer);
+            window.clickTimer = setTimeout(() => clickCount = 0, 3000);
         };
 
         window.toggleAdmin = () => {
