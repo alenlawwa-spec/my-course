@@ -57,12 +57,6 @@
         const init = async () => {
             renderDashboard();
 
-            // Если API ключ пуст, сразу уходим в локальный режим без попыток Auth
-            if (!firebaseConfig.apiKey || firebaseConfig.apiKey.includes("AIza")) {
-                // Если ключ дефолтный или пустой, показываем предупреждение в консоли, но работаем
-                console.info("Firebase is in local mode. Please enable Anonymous Auth in Firebase Console to use Cloud features.");
-            }
-
             try {
                 const app = initializeApp(firebaseConfig);
                 const db = getFirestore(app);
@@ -89,7 +83,7 @@
                             }
                         }
                     }, (err) => {
-                        console.warn("Cloud access restricted (Check Firestore Rules):", err.message);
+                        console.warn("Cloud access restricted:", err.message);
                         document.getElementById('status-dot')?.classList.replace('bg-gray-500', 'bg-red-500');
                     });
 
@@ -99,7 +93,6 @@
                             await setDoc(courseRef, { tasks, title, updatedAt: new Date().toISOString() });
                             return true;
                         } catch (e) {
-                            console.error("Cloud Save failed:", e);
                             return false;
                         }
                     };
@@ -114,43 +107,33 @@
                 });
 
                 const performAuth = async () => {
-                    // Пытаемся авторизоваться через токен Canvas
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         try {
                             await signInWithCustomToken(auth, __initial_auth_token);
                             return;
-                        } catch (e) {
-                            console.warn("Custom Token Auth skipped.");
-                        }
+                        } catch (e) {}
                     }
-                    
-                    // Анонимная авторизация
                     try {
                         await signInAnonymously(auth);
                     } catch (e) {
-                        // ОШИБКА ЗДЕСЬ: Configuration-not-found означает, что анонимный вход выключен в Firebase Console
-                        console.warn("Cloud Sync Disabled: Anonymous Auth is not enabled in Firebase Console.");
                         document.getElementById('status-dot')?.classList.replace('bg-gray-500', 'bg-red-500');
-                        // Не выкидываем ошибку в консоль как Error, просто предупреждаем
                     }
                 };
 
                 await performAuth();
 
             } catch (e) { 
-                console.warn("Firebase restricted mode active.");
                 document.getElementById('status-dot')?.classList.add('bg-red-500');
             }
         };
 
         window.onload = init;
 
-        // UI логика
         const tg = window.Telegram.WebApp;
         tg.expand();
         
         let clickCount = 0;
-        function adminClick() {
+        window.adminClick = () => {
             clickCount++;
             if (clickCount >= 5) {
                 document.getElementById('admin-btn').classList.remove('hidden');
@@ -158,21 +141,18 @@
                 if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
             }
             setTimeout(() => clickCount = 0, 2000);
-        }
+        };
 
-        window.adminClick = adminClick;
-
-        function toggleAdmin() {
+        window.toggleAdmin = () => {
             const p = document.getElementById('admin-panel');
             p.classList.toggle('hidden');
             if(!p.classList.contains('hidden')) {
                 document.getElementById('admin-course-title-input').value = window.courseData.title;
                 renderAdminInputs();
             }
-        }
-        window.toggleAdmin = toggleAdmin;
+        };
 
-        function renderAdminInputs() {
+        window.renderAdminInputs = () => {
             const container = document.getElementById('admin-inputs');
             container.innerHTML = window.courseData.tasks.map((t, i) => `
                 <div class="p-3 bg-white/5 rounded-xl border border-white/10 relative group">
@@ -182,28 +162,28 @@
                 </div>
             `).join('');
             if(window.lucide) lucide.createIcons();
-        }
-        window.renderAdminInputs = renderAdminInputs;
+        };
 
-        function addModule() {
+        window.addModule = () => {
             window.courseData.tasks.push({ 
                 id: Date.now(), 
                 title: `Модуль ${window.courseData.tasks.length + 1}`, 
                 deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16) 
             });
-            renderAdminInputs();
-        }
-        window.addModule = addModule;
+            window.renderAdminInputs();
+        };
 
-        function removeModule(i) {
+        window.removeModule = (i) => {
             if(window.courseData.tasks.length <= 1) return;
-            if(!confirm("Удалить этот модуль?")) return;
-            window.courseData.tasks.splice(i, 1);
-            renderAdminInputs();
-        }
-        window.removeModule = removeModule;
+            window.showModal("Удалить?", "Удалить этот модуль?", (ok) => {
+                if(ok) {
+                    window.courseData.tasks.splice(i, 1);
+                    window.renderAdminInputs();
+                }
+            });
+        };
 
-        function renderDashboard() {
+        window.renderDashboard = () => {
             document.getElementById('main-title').innerText = window.courseData.title;
             const container = document.getElementById('tasks-list');
             container.innerHTML = '';
@@ -231,11 +211,10 @@
                 `);
             });
             if(window.lucide) lucide.createIcons();
-        }
-        window.renderDashboard = renderDashboard;
+        };
 
         let activeId = null, timer = null;
-        function openTask(id) {
+        window.openTask = (id) => {
             activeId = id;
             const t = window.courseData.tasks.find(x => x.id === id);
             document.getElementById('detail-title').innerText = t.title;
@@ -253,17 +232,15 @@
                 el.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
             };
             upd(); timer = setInterval(upd, 1000);
-        }
-        window.openTask = openTask;
+        };
 
-        function goBack() { document.getElementById('screen-detail').classList.add('hidden'); clearInterval(timer); }
-        window.goBack = goBack;
+        window.goBack = () => { document.getElementById('screen-detail').classList.add('hidden'); clearInterval(timer); };
 
-        async function submitTask(late = false) {
+        window.submitTask = async (late = false) => {
             const urlInp = document.getElementById('work-url');
             const url = urlInp.value.trim();
-            if(!url.startsWith('http')) return showModal("Ошибка", "Вставьте корректную ссылку.");
-            showModal("Отправить?", late ? "Вы сдаете с опозданием." : "Ссылка будет отправлена куратору.", async (ok) => {
+            if(!url.startsWith('http')) return window.showModal("Ошибка", "Вставьте корректную ссылку.");
+            window.showModal("Отправить?", late ? "Вы сдаете с опозданием." : "Ссылка будет отправлена куратору.", async (ok) => {
                 if(ok) {
                     const t = window.courseData.tasks.find(x => x.id === activeId);
                     const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user'};
@@ -273,27 +250,25 @@
                             method:'POST', headers:{'Content-Type':'application/json'},
                             body: JSON.stringify({chat_id:"758556732", text:msg, parse_mode:'HTML'})
                         });
-                        handleSuccess(late);
-                    } catch(e) { handleSuccess(late, true); }
+                        handleSuccess();
+                    } catch(e) { handleSuccess(); }
                 }
             });
-        }
-        window.submitTask = submitTask;
+        };
 
-        function handleSuccess(late, sim = false) {
+        function handleSuccess() {
             window.userLevel++; localStorage.setItem('userCurrentLevel', window.userLevel);
-            goBack(); renderDashboard();
-            showModal("Успешно", "Работа принята!", null, false);
+            window.goBack(); window.renderDashboard();
+            window.showModal("Успешно", "Работа принята!", null, false);
         }
 
-        function resetUserProgress() {
-            showModal("Сброс?", "Вернуться на 1 уровень?", (ok) => {
-                if(ok) { window.userLevel = 1; localStorage.setItem('userCurrentLevel', 1); renderDashboard(); toggleAdmin(); }
+        window.resetUserProgress = () => {
+            window.showModal("Сброс?", "Вернуться на 1 уровень?", (ok) => {
+                if(ok) { window.userLevel = 1; localStorage.setItem('userCurrentLevel', 1); window.renderDashboard(); window.toggleAdmin(); }
             });
-        }
-        window.resetUserProgress = resetUserProgress;
+        };
 
-        async function saveAdminData() {
+        window.saveAdminData = async () => {
             const btn = document.getElementById('cloud-save-btn');
             btn.disabled = true; btn.innerText = "СОХРАНЕНИЕ...";
             const title = document.getElementById('admin-course-title-input').value;
@@ -303,40 +278,37 @@
                 deadline: document.getElementById(`adm-d-${i}`).value
             }));
 
-            // Локальное сохранение
             window.courseData.tasks = tasks;
             window.courseData.title = title;
             localStorage.setItem('courseConfig', JSON.stringify(tasks));
             localStorage.setItem('courseTitle', title);
-            renderDashboard();
+            window.renderDashboard();
 
             if(window.saveToCloudAction) {
                 const ok = await window.saveToCloudAction(tasks, title);
-                if(ok) { showModal("Успешно", "Курс обновлен в облаке."); toggleAdmin(); }
-                else showModal("Предупреждение", "Данные сохранены локально, но не синхронизированы (включите Anonymous Auth).");
+                if(ok) { window.showModal("Успешно", "Курс обновлен в облаке."); window.toggleAdmin(); }
+                else window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
             } else {
-                showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth для работы облака.");
-                toggleAdmin();
+                window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
+                window.toggleAdmin();
             }
             btn.disabled = false; btn.innerText = "Опубликовать в облако";
-        }
-        window.saveAdminData = saveAdminData;
+        };
 
-        function showModal(t, m, cb = null, showCancel = true) {
+        window.showModal = (t, m, cb = null, showCancel = true) => {
             const el = document.getElementById('custom-modal');
             document.getElementById('modal-title').innerText = t;
             document.getElementById('modal-message').innerText = m;
             const b = document.getElementById('modal-buttons'); b.innerHTML = '';
-            const btn = (txt, cls, fn) => {
+            const createBtn = (txt, cls, fn) => {
                 const bt = document.createElement('button');
                 bt.className = `flex-1 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider ${cls}`;
                 bt.innerText = txt; bt.onclick = fn; b.appendChild(bt);
             }
-            if(showCancel && cb) btn("Отмена", "bg-white/5", () => el.classList.add('hidden'));
-            btn("ОК", "bg-blue-600", () => { el.classList.add('hidden'); if(cb) cb(true); });
+            if(showCancel && cb) createBtn("Отмена", "bg-white/5", () => el.classList.add('hidden'));
+            createBtn("ОК", "bg-blue-600", () => { el.classList.add('hidden'); if(cb) cb(true); });
             el.classList.remove('hidden');
-        }
-        window.showModal = showModal;
+        };
     </script>
 
     <style>
@@ -353,7 +325,6 @@
         .animate-in { animation: slideUp 0.4s ease-out forwards; }
         .pulse-ring { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; animation: pulse-blue 2s infinite; }
         @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
-        .hidden { display: none !important; }
     </style>
 </head>
 <body class="p-4 sm:p-6 flex justify-center">
@@ -363,7 +334,7 @@
             <header class="mb-6 flex justify-between items-end sticky top-0 z-10 py-4 bg-black/40 backdrop-blur-md -mx-4 px-4 rounded-b-2xl">
                 <div onclick="adminClick()" class="flex flex-col cursor-pointer select-none">
                     <div class="flex items-center gap-2">
-                        <h1 id="main-title" class="text-xl font-extrabold tracking-tight neon-text truncate max-w-[200px]">Твой Путь</h1>
+                        <h1 id="main-title" class="text-xl font-extrabold tracking-tight neon-text truncate max-w-[200px]">Загрузка...</h1>
                         <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-gray-500 transition-all duration-500 flex-shrink-0"></div>
                     </div>
                     <p class="text-gray-400 text-[10px] mt-0.5">Выполнено: <span id="progress-counter" class="text-white font-bold">0/0</span></p>
