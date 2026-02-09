@@ -258,16 +258,18 @@
             window.showModal("Отправить?", late ? "Вы сдаете с опозданием." : "Ссылка будет отправлена куратору.", async (ok) => {
                 if(ok) {
                     const t = window.courseData.tasks.find(x => x.id === activeId);
-                    const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user'};
+                    const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user', id: '0'};
+                    const completed = Math.min(window.userLevel, window.courseData.tasks.length);
                     
-                    // ФОРМАТ СООБЩЕНИЯ (ТОЛЬКО ЭТА ЧАСТЬ ИЗМЕНЕНА ПО ПРОСЬБЕ)
+                    // ФОРМАТ СООБЩЕНИЯ - СТРОГОЕ ОФОРМЛЕНИЕ ССЫЛКИ
                     const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
                                 `<b>Имя:</b> ${user.first_name}\n` +
                                 `<b>Логин:</b> @${user.username || 'unknown'}\n` +
-                                `<b>Чат с учеником:</b> tg://user?id=${user.id}\n` +
+                                `<a href="tg://user?id=${user.id}">ЧАТ С УЧЕНИКОМ</a>\n\n` +
                                 `<b>Ссылка на ДЗ:</b> ${url}\n` +
                                 `<b>Статус:</b> ${late ? 'После дедлайна 🚩' : 'Вовремя ✅'}\n` +
-                                `<b>Модуль:</b> ${t.title}`;
+                                `<b>Модуль:</b> ${t.title}\n` +
+                                `<b>Прогресс:</b> ${completed}/${window.courseData.tasks.length}`;
 
                     try {
                         await fetch(`https://api.telegram.org/bot8068708797:AAGhY2aD8_waCmB8oCyN2dd3FcmMY3SJJAs/sendMessage`, {
