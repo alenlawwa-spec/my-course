@@ -4,9 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Course App</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <!-- Firebase SDK -->
@@ -15,7 +23,21 @@
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Глобальные константы по умолчанию
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAQJP9v-BI266Eg7BlkXTmtkh81x5ew8oQ",
+            authDomain: "my-course-final.firebaseapp.com",
+            projectId: "my-course-final",
+            storageBucket: "my-course-final.firebasestorage.app",
+            messagingSenderId: "837614939877",
+            appId: "1:837614939877:web:3846fec761d5c739882e0c"
+        };
+        
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // ВАШ TELEGRAM ID ДЛЯ АДМИНИСТРИРОВАНИЯ
+        const ADMIN_ID = 758556732; 
+
         window.DEFAULT_CONFIG = [
             { id: 1, title: "Модуль 1: Введение", deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16) },
             { id: 2, title: "Модуль 2: Аналитика", deadline: new Date(Date.now() + 172800000).toISOString().slice(0,16) },
@@ -29,11 +51,6 @@
             { id: 10, title: "Модуль 10: Финал", deadline: new Date(Date.now() + 864000000).toISOString().slice(0,16) }
         ];
 
-        let firebaseConfig = null;
-        try { firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}'); } catch(e) {}
-        
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
         window.courseData = { 
             title: localStorage.getItem('courseTitle') || "Твой Путь", 
             tasks: JSON.parse(localStorage.getItem('courseConfig')) || window.DEFAULT_CONFIG 
@@ -41,144 +58,314 @@
         window.userLevel = parseInt(localStorage.getItem('userCurrentLevel')) || 1;
 
         const init = async () => {
-            if (typeof renderDashboard === 'function') {
-                renderDashboard();
-            }
-
-            if (!firebaseConfig || !firebaseConfig.apiKey) return;
+            renderDashboard();
 
             try {
                 const app = initializeApp(firebaseConfig);
                 const db = getFirestore(app);
                 const auth = getAuth(app);
 
-                const initAuth = async () => {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                };
-                await initAuth();
-                
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        const courseRef = doc(db, 'artifacts', appId, 'public', 'data', 'course_settings', 'data_doc');
-                        
-                        onSnapshot(courseRef, (docSnap) => {
-                            if (docSnap.exists()) {
-                                const data = docSnap.data();
+                const connectToCloud = (user) => {
+                    if (!user) return;
+                    const courseRef = doc(db, 'artifacts', appId, 'public', 'data', 'course_settings', 'data_doc');
+                    
+                    onSnapshot(courseRef, (docSnap) => {
+                        const statusDot = document.getElementById('status-dot');
+                        if(statusDot) {
+                            statusDot.classList.remove('bg-red-500', 'bg-gray-500');
+                            statusDot.classList.add('bg-green-500', 'shadow-[0_0_10px_#22c55e]');
+                        }
+
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            if (data.tasks && data.tasks.length > 0) {
                                 window.courseData = data;
                                 localStorage.setItem('courseConfig', JSON.stringify(data.tasks));
                                 localStorage.setItem('courseTitle', data.title);
                                 renderDashboard();
                             }
-                        }, (err) => console.log("Live update error:", err));
+                        }
+                    }, (err) => {
+                        console.warn("Cloud access restricted:", err.message);
+                        document.getElementById('status-dot')?.classList.replace('bg-gray-500', 'bg-red-500');
+                    });
 
-                        window.saveToCloudAction = async (tasks, title) => {
-                            if (!auth.currentUser) return false;
-                            try {
-                                await setDoc(courseRef, { 
-                                    tasks, 
-                                    title, 
-                                    updatedAt: new Date().toISOString() 
-                                });
-                                return true;
-                            } catch (e) {
-                                console.error("Cloud save failed:", e);
-                                return false;
-                            }
-                        };
+                    window.saveToCloudAction = async (tasks, title) => {
+                        if (!auth.currentUser) return false;
+                        try {
+                            await setDoc(courseRef, { tasks, title, updatedAt: new Date().toISOString() });
+                            return true;
+                        } catch (e) {
+                            return false;
+                        }
+                    };
+                };
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        connectToCloud(user);
+                    } else {
+                        document.getElementById('status-dot')?.classList.add('bg-gray-500');
                     }
                 });
 
-            } catch (e) {
-                console.error("Firebase init failed");
+                const performAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        try {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                            return;
+                        } catch (e) {}
+                    }
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (e) {
+                        document.getElementById('status-dot')?.classList.replace('bg-gray-500', 'bg-red-500');
+                    }
+                };
+
+                await performAuth();
+
+            } catch (e) { 
+                document.getElementById('status-dot')?.classList.add('bg-red-500');
             }
         };
 
         window.onload = init;
+
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        let clickCount = 0;
+        window.adminClick = () => {
+            clickCount++;
+            if (clickCount >= 5) {
+                document.getElementById('admin-btn').classList.remove('hidden');
+                document.getElementById('default-icon').classList.add('hidden');
+                if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                clickCount = 0;
+            }
+            clearTimeout(window.clickTimer);
+            window.clickTimer = setTimeout(() => clickCount = 0, 3000);
+        };
+
+        window.toggleAdmin = () => {
+            const p = document.getElementById('admin-panel');
+            const user = tg.initDataUnsafe?.user;
+            const isActualAdmin = user && Number(user.id) === Number(ADMIN_ID);
+            
+            p.classList.toggle('hidden');
+            
+            if(!p.classList.contains('hidden')) {
+                // Если зашел ученик (не админ) — скрываем всё, кроме сброса
+                if (!isActualAdmin) {
+                    document.getElementById('admin-course-editor').classList.add('hidden');
+                    document.getElementById('admin-footer-buttons').classList.add('hidden');
+                    document.querySelector('.admin-title-text').innerText = "Настройки профиля";
+                } else {
+                    document.getElementById('admin-course-editor').classList.remove('hidden');
+                    document.getElementById('admin-footer-buttons').classList.remove('hidden');
+                    document.querySelector('.admin-title-text').innerText = "Редактор курса";
+                    document.getElementById('admin-course-title-input').value = window.courseData.title;
+                    renderAdminInputs();
+                }
+            }
+        };
+
+        window.renderAdminInputs = () => {
+            const container = document.getElementById('admin-inputs');
+            container.innerHTML = window.courseData.tasks.map((t, i) => `
+                <div class="p-3 bg-white/5 rounded-xl border border-white/10 relative group">
+                    <button onclick="removeModule(${i})" class="absolute top-2 right-2 text-gray-500 hover:text-red-500 p-1 opacity-50 group-hover:opacity-100 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    <input type="text" id="adm-t-${i}" value="${t.title}" class="w-10/12 bg-transparent border-b border-white/10 py-1 text-xs mb-2 outline-none focus:border-yellow-500 transition-colors">
+                    <input type="datetime-local" id="adm-d-${i}" value="${t.deadline}" class="w-full bg-white/10 rounded p-2 text-white text-[10px] outline-none">
+                </div>
+            `).join('');
+            if(window.lucide) lucide.createIcons();
+        };
+
+        window.addModule = () => {
+            window.courseData.tasks.push({ 
+                id: Date.now(), 
+                title: `Модуль ${window.courseData.tasks.length + 1}`, 
+                deadline: new Date(Date.now() + 86400000).toISOString().slice(0,16) 
+            });
+            window.renderAdminInputs();
+        };
+
+        window.removeModule = (i) => {
+            if(window.courseData.tasks.length <= 1) return;
+            window.showModal("Удалить?", "Удалить этот модуль?", (ok) => {
+                if(ok) {
+                    window.courseData.tasks.splice(i, 1);
+                    window.renderAdminInputs();
+                }
+            });
+        };
+
+        window.renderDashboard = () => {
+            document.getElementById('main-title').innerText = window.courseData.title;
+            const container = document.getElementById('tasks-list');
+            container.innerHTML = '';
+            const completed = Math.min(window.userLevel - 1, window.courseData.tasks.length);
+            document.getElementById('progress-counter').innerText = `${completed}/${window.courseData.tasks.length}`;
+
+            window.courseData.tasks.forEach((t, i) => {
+                const lvl = i + 1;
+                let cls='', icon='', click=false;
+                if(lvl < window.userLevel) { cls='task-done'; icon='<i data-lucide="check-circle-2" class="text-emerald-400 w-6 h-6"></i>'; }
+                else if(lvl === window.userLevel) { cls='task-active cursor-pointer hover:bg-white/5'; icon='<div class="pulse-ring"></div>'; click=true; }
+                else { cls='task-locked'; icon='<i data-lucide="lock" class="text-gray-600 w-5 h-5"></i>'; }
+                const d = new Date(t.deadline);
+                container.insertAdjacentHTML('beforeend', `
+                    <div class="glass-panel p-5 task-card ${cls} animate-in" style="animation-delay: ${i * 0.05}s" onclick="${click ? `openTask(${t.id})` : ''}">
+                        <div class="flex flex-col flex-1 pr-4">
+                            <span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest mb-1">Этап ${lvl}</span>
+                            <h3 class="text-base font-bold mb-1 leading-tight">${t.title}</h3>
+                            <div class="text-[10px] text-gray-400 flex items-center gap-1">
+                                <i data-lucide="clock" class="w-3 h-3"></i> ${d.toLocaleDateString('ru-RU')} в ${d.toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}
+                            </div>
+                        </div>
+                        <div class="w-12 flex items-center justify-center">${icon}</div>
+                    </div>
+                `);
+            });
+            if(window.lucide) lucide.createIcons();
+        };
+
+        let activeId = null, timer = null;
+        window.openTask = (id) => {
+            activeId = id;
+            const t = window.courseData.tasks.find(x => x.id === id);
+            document.getElementById('detail-title').innerText = t.title;
+            document.getElementById('screen-detail').classList.remove('hidden');
+            const el = document.getElementById('detail-timer');
+            const btn = document.getElementById('submit-btn');
+            const lBtn = document.getElementById('late-submit-btn');
+            document.getElementById('work-url').value = '';
+            if(timer) clearInterval(timer);
+            const upd = () => {
+                const diff = new Date(t.deadline) - new Date();
+                if(diff <= 0) { el.innerText = "00:00:00"; el.className = "text-3xl font-black neon-red"; btn.classList.add('hidden'); lBtn.classList.remove('hidden'); return; }
+                el.className = "text-3xl font-black neon-blue"; btn.classList.remove('hidden'); lBtn.classList.add('hidden');
+                const h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
+                el.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            };
+            upd(); timer = setInterval(upd, 1000);
+        };
+
+        window.goBack = () => { document.getElementById('screen-detail').classList.add('hidden'); clearInterval(timer); };
+
+        window.submitTask = async (late = false) => {
+            const urlInp = document.getElementById('work-url');
+            const url = urlInp.value.trim();
+            if(!url.startsWith('http')) return window.showModal("Ошибка", "Вставьте корректную ссылку.");
+            window.showModal("Отправить?", late ? "Вы сдаете с опозданием." : "Ссылка будет отправлена куратору.", async (ok) => {
+                if(ok) {
+                    const t = window.courseData.tasks.find(x => x.id === activeId);
+                    const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user', id: '0'};
+                    const completed = Math.min(window.userLevel, window.courseData.tasks.length);
+                    
+                    const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
+                                `<b>Имя:</b> ${user.first_name}\n` +
+                                `<b>Логин:</b> @${user.username || 'unknown'}\n\n` +
+                                `<b>Ссылка на ДЗ:</b> ${url}\n` +
+                                `<b>Статус:</b> ${late ? 'После дедлайна 🚩' : 'Вовремя ✅'}\n` +
+                                `<b>Модуль:</b> ${t.title}\n` +
+                                `<b>Прогресс:</b> ${completed}/${window.courseData.tasks.length}`;
+
+                    try {
+                        await fetch(`https://api.telegram.org/bot8068708797:AAGhY2aD8_waCmB8oCyN2dd3FcmMY3SJJAs/sendMessage`, {
+                            method:'POST', headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({chat_id:"758556732", text:msg, parse_mode:'HTML'})
+                        });
+                        handleSuccess();
+                    } catch(e) { handleSuccess(); }
+                }
+            });
+        };
+
+        function handleSuccess() {
+            window.userLevel++; localStorage.setItem('userCurrentLevel', window.userLevel);
+            window.goBack(); window.renderDashboard();
+            window.showModal("Успешно", "Работа принята!", null, false);
+        }
+
+        window.resetUserProgress = () => {
+            window.showModal("Сброс?", "Вернуться на 1 уровень?", (ok) => {
+                if(ok) { window.userLevel = 1; localStorage.setItem('userCurrentLevel', 1); window.renderDashboard(); window.toggleAdmin(); }
+            });
+        };
+
+        window.saveAdminData = async () => {
+            const btn = document.getElementById('cloud-save-btn');
+            btn.disabled = true; btn.innerText = "СОХРАНЕНИЕ...";
+            const title = document.getElementById('admin-course-title-input').value;
+            const tasks = window.courseData.tasks.map((t, i) => ({
+                id: t.id || Date.now() + i,
+                title: document.getElementById(`adm-t-${i}`).value,
+                deadline: document.getElementById(`adm-d-${i}`).value
+            }));
+
+            window.courseData.tasks = tasks;
+            window.courseData.title = title;
+            localStorage.setItem('courseConfig', JSON.stringify(tasks));
+            localStorage.setItem('courseTitle', title);
+            window.renderDashboard();
+
+            if(window.saveToCloudAction) {
+                const ok = await window.saveToCloudAction(tasks, title);
+                if(ok) { window.showModal("Успешно", "Курс обновлен в облаке."); window.toggleAdmin(); }
+                else window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
+            } else {
+                window.showModal("Локально", "Данные сохранены в памяти. Включите Anonymous Auth.");
+                window.toggleAdmin();
+            }
+            btn.disabled = false; btn.innerText = "Опубликовать в облако";
+        };
+
+        window.showModal = (t, m, cb = null, showCancel = true) => {
+            const el = document.getElementById('custom-modal');
+            document.getElementById('modal-title').innerText = t;
+            document.getElementById('modal-message').innerText = m;
+            const b = document.getElementById('modal-buttons'); b.innerHTML = '';
+            const createBtn = (txt, cls, fn) => {
+                const bt = document.createElement('button');
+                bt.className = `flex-1 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider ${cls}`;
+                bt.innerText = txt; bt.onclick = fn; b.appendChild(bt);
+            }
+            if(showCancel && cb) createBtn("Отмена", "bg-white/5", () => el.classList.add('hidden'));
+            createBtn("ОК", "bg-blue-600", () => { el.classList.add('hidden'); if(cb) cb(true); });
+            el.classList.remove('hidden');
+        };
     </script>
 
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background: radial-gradient(circle at top right, #0f172a, #000000);
-            background-attachment: fixed;
-            color: white;
-            min-height: 100vh;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            overflow-x: hidden;
-            overscroll-behavior-y: none;
-            -webkit-tap-highlight-color: transparent;
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-        
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-        }
-        
-        .task-card {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .task-active {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%);
-            border-color: #3b82f6;
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
-        }
-        
+        body { font-family: 'Inter', sans-serif; background: radial-gradient(circle at top right, #0f172a, #000000); background-attachment: fixed; color: white; min-height: 100vh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+        .glass-panel { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; }
+        .task-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; align-items: center; }
+        .task-active { background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(37, 99, 235, 0.1) 100%); border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.15); }
         .task-locked { opacity: 0.5; filter: grayscale(1); pointer-events: none; }
         .task-done { border-color: #10b981; background: rgba(16, 185, 129, 0.08); }
-        
         .neon-text { text-shadow: 0 0 10px rgba(255, 255, 255, 0.2); }
         .neon-blue { text-shadow: 0 0 15px #3b82f6; }
         .neon-red { text-shadow: 0 0 15px #ef4444; color: #ef4444 !important; }
-        
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: slideUp 0.4s ease-out forwards; }
-        
-        .pulse-ring {
-            width: 10px; height: 10px; background: #3b82f6; border-radius: 50%;
-            animation: pulse-blue 2s infinite;
-        }
-        @keyframes pulse-blue {
-            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-        }
-
-        #admin-panel.hidden, #custom-modal.hidden, #screen-detail.hidden { display: none; }
-
-        input:invalid {
-            border-color: #ef4444 !important;
-        }
+        .pulse-ring { width: 12px; height: 12px; background: #3b82f6; border-radius: 50%; animation: pulse-blue 2s infinite; }
+        @keyframes pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
     </style>
 </head>
 <body class="p-4 sm:p-6 flex justify-center">
 
     <div class="w-full max-w-md mx-auto flex flex-col h-full relative">
-        <!-- DASHBOARD -->
         <div id="screen-dashboard" class="w-full pb-10">
             <header class="mb-6 flex justify-between items-end sticky top-0 z-10 py-4 bg-black/40 backdrop-blur-md -mx-4 px-4 rounded-b-2xl">
-                <div onclick="adminClick()">
-                    <h1 id="main-title" class="text-2xl font-extrabold tracking-tight neon-text select-none">Твой Путь</h1>
-                    <p class="text-gray-400 text-xs mt-0.5">Выполнено: <span id="progress-counter" class="text-white font-bold">0/0</span></p>
+                <div onclick="adminClick()" class="flex flex-col cursor-pointer select-none">
+                    <div class="flex items-center gap-2">
+                        <h1 id="main-title" class="text-xl font-extrabold tracking-tight neon-text truncate max-w-[200px]">Загрузка...</h1>
+                        <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-gray-500 transition-all duration-500 flex-shrink-0"></div>
+                    </div>
+                    <p class="text-gray-400 text-[10px] mt-0.5">Выполнено: <span id="progress-counter" class="text-white font-bold">0/0</span></p>
                 </div>
                 <button id="admin-btn" onclick="toggleAdmin()" class="hidden w-9 h-9 rounded-full bg-yellow-500/20 border border-yellow-500/40 flex items-center justify-center animate-bounce">
                     <i data-lucide="settings" class="text-yellow-500 w-4 h-4"></i>
@@ -190,389 +377,63 @@
             <div id="tasks-list" class="space-y-3"></div>
         </div>
 
-        <!-- COMPACT DETAIL MODAL -->
         <div id="screen-detail" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm p-6 flex items-center justify-center animate-in">
             <div class="glass-panel p-6 w-full max-w-[340px] relative shadow-2xl">
-                <button onclick="goBack()" class="absolute -top-12 left-0 text-gray-400 flex items-center gap-2 text-sm">
+                <button onclick="goBack()" class="absolute -top-12 left-0 text-gray-400 flex items-center gap-2 text-sm hover:text-white transition-colors">
                     <i data-lucide="arrow-left" class="w-4 h-4"></i> Назад
                 </button>
-                
                 <h2 id="detail-title" class="text-lg font-bold mb-1 text-center text-blue-400 uppercase tracking-wider"></h2>
                 <div class="flex flex-col items-center mb-6">
                     <span class="text-[9px] uppercase tracking-[0.2em] text-gray-500 mb-1 text-center">Дедлайн модуля</span>
                     <div id="detail-timer" class="text-3xl font-black tabular-nums neon-blue">00:00:00</div>
                 </div>
-
                 <div class="space-y-4">
                     <div class="space-y-1">
                         <label class="text-[10px] text-gray-400 uppercase ml-1">Ссылка на работу</label>
-                        <input type="url" id="work-url" placeholder="https://..." required
-                               class="w-full px-4 py-3 rounded-xl text-white bg-black/40 border border-gray-800 focus:border-blue-500 outline-none text-sm transition-all">
+                        <input type="url" id="work-url" placeholder="https://..." class="w-full px-4 py-3 rounded-xl text-white bg-black/40 border border-gray-800 focus:border-blue-500 outline-none text-sm placeholder-gray-600">
                     </div>
                     <div id="buttons-container" class="space-y-2">
-                        <button id="submit-btn" onclick="submitTask()" class="w-full py-3.5 rounded-xl font-bold uppercase tracking-wider text-[11px] bg-blue-600 shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
-                            Отправить работу
-                        </button>
-                        <button id="late-submit-btn" onclick="submitTask(true)" class="hidden w-full py-3.5 rounded-xl font-bold uppercase tracking-wider text-[11px] bg-red-600/20 text-red-500 border border-red-500/40 active:scale-95 transition-all">
-                            Сдать с опозданием
-                        </button>
+                        <button id="submit-btn" onclick="submitTask()" class="w-full py-3.5 rounded-xl font-bold uppercase tracking-wider text-[11px] bg-blue-600 active:scale-95 transition-all">Отправить работу</button>
+                        <button id="late-submit-btn" onclick="submitTask(true)" class="hidden w-full py-3.5 rounded-xl font-bold uppercase tracking-wider text-[11px] bg-red-600/20 text-red-500 border border-red-500/40 active:scale-95 transition-all">Сдать с опозданием</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ADMIN PANEL -->
+    <!-- Редактор (Админ) -->
     <div id="admin-panel" class="hidden fixed inset-0 z-[60] bg-slate-950 p-6 overflow-y-auto">
-        <div class="w-full max-w-md mx-auto">
+        <div class="w-full max-w-md mx-auto pb-48">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold text-yellow-500 uppercase" id="admin-panel-title">Редактор</h2>
+                <h2 class="text-xl font-bold text-yellow-500 uppercase admin-title-text">Редактор курса</h2>
                 <button onclick="toggleAdmin()" class="px-3 py-1 bg-white/10 rounded-lg text-xs">Закрыть</button>
             </div>
             
-            <!-- ADMIN ONLY SECTION -->
-            <div id="admin-full-controls" class="hidden">
+            <div id="admin-course-editor" class="">
                 <div class="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
                     <label class="text-[10px] text-yellow-500 font-bold uppercase block mb-1">Заголовок курса</label>
                     <input type="text" id="admin-course-title-input" class="w-full bg-transparent border-b border-white/20 py-1 text-base font-bold text-white outline-none">
                 </div>
-                <div id="admin-inputs" class="space-y-3 pb-4"></div>
-                <button onclick="addModule()" class="w-full py-3 mb-6 bg-white/5 rounded-xl text-xs font-bold uppercase tracking-widest">+ Добавить модуль</button>
+                <div id="admin-inputs" class="space-y-3 mb-6"></div>
             </div>
 
-            <!-- COMMON RESET SECTION -->
-            <div class="mb-6 p-4 bg-red-500/10 rounded-xl border border-red-500/20">
-                <label class="text-[10px] text-red-500 font-bold uppercase block mb-2">Прогресс обучения</label>
-                <button onclick="resetStudentProgress()" class="w-full py-3 bg-red-600/20 text-red-500 border border-red-500/40 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all">
-                    Сбросить лично мой прогресс
-                </button>
+            <div class="p-4 bg-red-500/10 rounded-xl border border-red-500/20 mb-10">
+                <button onclick="resetUserProgress()" class="w-full py-3 bg-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest text-white">Сбросить мой прогресс</button>
             </div>
-
-            <!-- ADMIN SAVE BUTTON -->
-            <div id="admin-save-btn-container" class="hidden fixed bottom-0 left-0 w-full p-4 bg-slate-950 border-t border-white/10">
-                 <button onclick="saveAdminData()" class="w-full py-4 bg-yellow-600 rounded-xl font-bold text-black uppercase text-xs tracking-widest">Опубликовать в облако</button>
+            
+            <div id="admin-footer-buttons" class="fixed bottom-0 left-0 w-full p-4 bg-slate-950/90 backdrop-blur-md border-t border-white/10 flex flex-col gap-2 max-w-md mx-auto right-0">
+                 <button onclick="addModule()" class="py-3 bg-white/5 rounded-xl text-xs font-bold uppercase tracking-widest">+ Добавить модуль</button>
+                 <button id="cloud-save-btn" onclick="saveAdminData()" class="py-4 bg-yellow-600 rounded-xl font-bold text-black uppercase text-xs tracking-widest">Опубликовать в облако</button>
             </div>
         </div>
     </div>
 
-    <!-- NOTIFICATION MODAL -->
-    <div id="custom-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 hidden p-6 backdrop-blur-md">
+    <div id="custom-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-6 backdrop-blur-md animate-in">
         <div class="glass-panel p-6 w-full max-w-xs text-center">
-            <h3 id="modal-title" class="text-lg font-bold mb-1"></h3>
+            <h3 id="modal-title" class="text-lg font-bold mb-2"></h3>
             <p id="modal-message" class="text-gray-400 mb-6 text-xs"></p>
             <div id="modal-buttons" class="flex gap-2"></div>
         </div>
     </div>
-
-    <script>
-        const tg = window.Telegram.WebApp;
-        const REAL_ADMIN_ID = "553316521"; // Твой ID
-        tg.expand();
-        tg.ready();
-
-        let clickCount = 0;
-        function adminClick() {
-            clickCount++;
-            if (clickCount >= 5) {
-                document.getElementById('admin-btn').classList.remove('hidden');
-                document.getElementById('default-icon').classList.add('hidden');
-            }
-            setTimeout(() => clickCount = 0, 2000);
-        }
-
-        function toggleAdmin() {
-            const panel = document.getElementById('admin-panel');
-            panel.classList.toggle('hidden');
-            
-            if (!panel.classList.contains('hidden')) {
-                const currentUserId = tg.initDataUnsafe?.user?.id?.toString() || "unknown";
-                const isAdmin = currentUserId === REAL_ADMIN_ID;
-                
-                // Настраиваем видимость элементов в зависимости от прав
-                const fullControls = document.getElementById('admin-full-controls');
-                const saveBtnContainer = document.getElementById('admin-save-btn-container');
-                const panelTitle = document.getElementById('admin-panel-title');
-
-                if (isAdmin) {
-                    fullControls.classList.remove('hidden');
-                    saveBtnContainer.classList.remove('hidden');
-                    panelTitle.innerText = "Редактор курса";
-                    document.getElementById('admin-course-title-input').value = window.courseData.title || "";
-                    renderAdminInputs();
-                } else {
-                    fullControls.classList.add('hidden');
-                    saveBtnContainer.classList.add('hidden');
-                    panelTitle.innerText = "Настройки ученика";
-                }
-            }
-        }
-
-        function renderAdminInputs() {
-            const container = document.getElementById('admin-inputs');
-            const tasks = window.courseData.tasks || [];
-            container.innerHTML = tasks.map((t, i) => `
-                <div class="p-3 bg-white/5 rounded-xl border border-white/10 relative">
-                    <button onclick="removeModule(${i})" class="absolute top-2 right-2 text-gray-500"><i data-lucide="x" class="w-4 h-4"></i></button>
-                    <input type="text" id="adm-t-${i}" value="${t.title}" class="w-full bg-transparent border-b border-white/10 py-1 text-xs mb-2 outline-none">
-                    <input type="datetime-local" id="adm-d-${i}" value="${t.deadline}" class="w-full bg-white/10 rounded p-1 text-white text-[10px] outline-none">
-                </div>
-            `).join('');
-            if (window.lucide) lucide.createIcons();
-        }
-
-        function addModule() {
-            if (!window.courseData.tasks) window.courseData.tasks = [];
-            window.courseData.tasks.push({ id: Date.now(), title: "Новый модуль", deadline: new Date().toISOString().slice(0,16) });
-            renderAdminInputs();
-        }
-
-        function removeModule(index) {
-            window.courseData.tasks.splice(index, 1);
-            renderAdminInputs();
-        }
-
-        function resetStudentProgress() {
-            showModal("Сброс прогресса", "Твой прогресс как ученика будет сброшен до первого модуля. Продолжить?", (ok) => {
-                if(ok) {
-                    window.userLevel = 1;
-                    localStorage.setItem('userCurrentLevel', 1);
-                    renderDashboard();
-                    toggleAdmin();
-                    showModal("Сброшено", "Твой личный прогресс успешно обнулен.", null, false);
-                }
-            });
-        }
-
-        async function saveAdminData() {
-            const title = document.getElementById('admin-course-title-input').value;
-            const tasks = window.courseData.tasks.map((t, i) => {
-                const titleVal = document.getElementById(`adm-t-${i}`).value;
-                const dateVal = document.getElementById(`adm-d-${i}`).value;
-                return {
-                    id: t.id || Date.now() + i,
-                    title: titleVal,
-                    deadline: dateVal
-                };
-            });
-            
-            if(window.saveToCloudAction) {
-                const success = await window.saveToCloudAction(tasks, title);
-                if (success) {
-                    showModal("Успешно", "Данные сохранены в облаке для всех.", null, false);
-                    toggleAdmin();
-                } else {
-                    showModal("Ошибка", "Не удалось сохранить в облако.");
-                }
-            } else {
-                window.courseData = { tasks, title };
-                localStorage.setItem('courseConfig', JSON.stringify(tasks));
-                localStorage.setItem('courseTitle', title);
-                renderDashboard();
-                toggleAdmin();
-                showModal("Локально", "Облако недоступно, сохранено только у тебя.", null, false);
-            }
-        }
-
-        function renderDashboard() {
-            if (!window.courseData || !window.courseData.tasks) return;
-            document.getElementById('main-title').innerText = window.courseData.title || "Твой Путь";
-            const tasks = window.courseData.tasks;
-            const container = document.getElementById('tasks-list');
-            container.innerHTML = '';
-            document.getElementById('progress-counter').innerText = `${Math.min(window.userLevel-1, tasks.length)}/${tasks.length}`;
-
-            tasks.forEach((task, index) => {
-                const level = index + 1;
-                let statusClass='', icon='', isClickable=false;
-
-                if (level < window.userLevel) {
-                    statusClass = 'task-done';
-                    icon = '<i data-lucide="check-circle-2" class="text-emerald-400 w-6 h-6"></i>';
-                } else if (level === window.userLevel) {
-                    statusClass = 'task-active cursor-pointer';
-                    icon = '<div class="pulse-ring"></div>';
-                    isClickable = true;
-                } else {
-                    statusClass = 'task-locked';
-                    icon = '<i data-lucide="lock" class="text-gray-600 w-5 h-5"></i>';
-                }
-
-                const d = new Date(task.deadline || Date.now());
-                const dateStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-                const timeStr = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
-                container.insertAdjacentHTML('beforeend', `
-                    <div class="glass-panel p-5 task-card ${statusClass} animate-in" 
-                         onclick="${isClickable ? `openTask(${task.id})` : ''}">
-                        <div class="flex flex-col flex-1 pr-4">
-                            <span class="text-[9px] text-gray-500 font-bold uppercase tracking-widest mb-1">Этап ${level}</span>
-                            <h3 class="text-base font-bold mb-1 leading-tight">${task.title}</h3>
-                            <div class="text-[10px] text-gray-400">
-                                <i data-lucide="calendar" class="w-3 h-3 inline mr-0.5"></i> До ${dateStr} в ${timeStr}
-                            </div>
-                        </div>
-                        <div class="flex-shrink-0 flex items-center justify-center w-10">
-                            ${icon}
-                        </div>
-                    </div>
-                `);
-            });
-            if (window.lucide) lucide.createIcons();
-        }
-
-        let activeTaskId = null, timerInterval = null;
-        function openTask(id) {
-            activeTaskId = id;
-            const task = window.courseData.tasks.find(t => t.id === id);
-            if(!task) return;
-            document.getElementById('detail-title').innerText = task.title;
-            document.getElementById('screen-detail').classList.remove('hidden');
-            document.getElementById('work-url').value = '';
-            
-            const btn = document.getElementById('submit-btn');
-            const lateBtn = document.getElementById('late-submit-btn');
-            const el = document.getElementById('detail-timer');
-            
-            if(timerInterval) clearInterval(timerInterval);
-            const updateTimer = () => {
-                const diff = new Date(task.deadline) - new Date();
-                
-                if (diff <= 0) { 
-                    el.innerText = "00:00:00"; 
-                    el.classList.add('neon-red');
-                    el.classList.remove('neon-blue');
-                    btn.disabled = true;
-                    btn.innerText = "Время истекло";
-                    btn.classList.replace('bg-blue-600', 'bg-gray-700');
-                    btn.style.opacity = "0.5";
-                    lateBtn.classList.remove('hidden');
-                    return; 
-                }
-                
-                el.classList.remove('neon-red');
-                el.classList.add('neon-blue');
-                btn.disabled = false;
-                btn.innerText = "Отправить работу";
-                btn.classList.add('bg-blue-600');
-                btn.classList.remove('bg-gray-700');
-                btn.style.opacity = "1";
-                lateBtn.classList.add('hidden');
-
-                const h=Math.floor(diff/3600000), m=Math.floor((diff%3600000)/60000), s=Math.floor((diff%60000)/1000);
-                el.innerText = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-            };
-            updateTimer();
-            timerInterval = setInterval(updateTimer, 1000);
-        }
-
-        function goBack() {
-            document.getElementById('screen-detail').classList.add('hidden');
-            if(timerInterval) clearInterval(timerInterval);
-        }
-
-        async function sendToBot(workUrl, taskTitle, isLate = false) {
-            const BOT_TOKEN = "8540525298:AAFa-g6oM6LgTmCJ9NwP6rFHW1DIyhu67y0";
-            const ADMIN_ID = 553316521;
-            
-            const user = tg.initDataUnsafe?.user || {};
-            const name = user.first_name || 'Неизвестно';
-            const username = user.username ? `@${user.username}` : 'не указан';
-            const userId = user.id || 'Неизвестно';
-            
-            const statusLabel = isLate ? "❌ ПОСЛЕ ДЕДЛАЙНА" : "✅ ВОВРЕМЯ";
-            const progress = `${window.userLevel}/${window.courseData.tasks.length}`;
-
-            const text = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
-                         `👤 <b>Имя:</b> ${name}\n` +
-                         `🔗 <b>Логин:</b> ${username}\n` +
-                         `🆔 <b>ID:</b> ${userId}\n\n` +
-                         `📂 <b>Ссылка:</b> ${workUrl}\n` +
-                         `⏳ <b>Статус:</b> ${statusLabel}\n\n` +
-                         `📚 <b>Модуль:</b> ${taskTitle}\n` +
-                         `📈 <b>Прогресс:</b> ${progress}`;
-
-            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: ADMIN_ID,
-                        text: text,
-                        parse_mode: 'HTML',
-                        disable_web_page_preview: true
-                    })
-                });
-                return response.ok;
-            } catch (e) {
-                console.error("Bot send error:", e);
-                return false;
-            }
-        }
-
-        async function submitTask(isLate = false) {
-            const btn = isLate ? document.getElementById('late-submit-btn') : document.getElementById('submit-btn');
-            const urlInput = document.getElementById('work-url');
-            const workUrl = urlInput.value;
-            
-            if (!workUrl) {
-                return showModal("Ошибка", "Добавьте ссылку на выполненную работу.");
-            }
-            
-            if (!urlInput.validity.valid || !workUrl.startsWith('http')) {
-                return showModal("Неверная ссылка", "Пожалуйста, введите корректный адрес ссылки (http:// или https://).");
-            }
-
-            const confirmMsg = isLate ? "Сдать работу с опозданием? Это будет отмечено у администратора." : "Ваша работа будет отправлена администратору.";
-
-            showModal("Сдать работу?", confirmMsg, async (ok) => {
-                if (ok) {
-                    btn.disabled = true;
-                    btn.style.opacity = "0.5";
-                    const originalText = btn.innerText;
-                    btn.innerText = "Отправка...";
-
-                    const currentTaskIndex = window.userLevel - 1;
-                    const currentTask = window.courseData.tasks[currentTaskIndex];
-                    const taskTitle = currentTask?.title || "Без названия";
-
-                    const sent = await sendToBot(workUrl, taskTitle, isLate);
-                    
-                    if (sent) {
-                        if (activeTaskId === currentTask?.id) {
-                            window.userLevel++;
-                            localStorage.setItem('userCurrentLevel', window.userLevel);
-                        }
-                        goBack();
-                        renderDashboard();
-                        const successMsg = isLate ? "Работа отправлена с опозданием. Администратор уведомлен." : "Ваша работа принята! Вы можете переходить к следующему этапу.";
-                        showModal("Успешно", successMsg, null, false);
-                    } else {
-                        showModal("Ошибка", "Бот не принял сообщение. Проверь связь.");
-                    }
-                    
-                    btn.disabled = false;
-                    btn.innerText = originalText;
-                    btn.style.opacity = "1";
-                }
-            });
-        }
-
-        function showModal(t, m, cb = null, showCancel = true) {
-            const el = document.getElementById('custom-modal');
-            document.getElementById('modal-title').innerText = t;
-            document.getElementById('modal-message').innerText = m;
-            const b = document.getElementById('modal-buttons'); b.innerHTML = '';
-            const btn = (txt, cls, fn) => {
-                const bt = document.createElement('button');
-                bt.className = `flex-1 py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all ${cls}`;
-                bt.innerText = txt; bt.onclick = fn; b.appendChild(bt);
-            }
-            if(showCancel && cb) btn("Отмена", "bg-white/5", () => { el.classList.add('hidden'); });
-            btn("ОК", "bg-blue-600", () => { el.classList.add('hidden'); if(cb) cb(true); });
-            el.classList.remove('hidden');
-        }
-    </script>
 </body>
 </html>
