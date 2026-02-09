@@ -261,7 +261,7 @@
                     const user = tg.initDataUnsafe?.user || {first_name: 'Тест', username: 'user', id: '0'};
                     const completed = Math.min(window.userLevel, window.courseData.tasks.length);
                     
-                    // ФОРМАТ СООБЩЕНИЯ - СТРОГОЕ ОФОРМЛЕНИЕ ССЫЛКИ
+                    // ФОРМАТ СООБЩЕНИЯ - МАКСИМАЛЬНО ПРОСТОЙ HTML ДЛЯ КЛИКАБЕЛЬНОСТИ
                     const msg = `📬 <b>НОВАЯ РАБОТА</b>\n\n` +
                                 `<b>Имя:</b> ${user.first_name}\n` +
                                 `<b>Логин:</b> @${user.username || 'unknown'}\n` +
